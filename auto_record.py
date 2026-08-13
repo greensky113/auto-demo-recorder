@@ -153,21 +153,22 @@ def show_trae_interface_and_run(target_command, target_script, libs_path):
     先显示"用户输入指令"，然后真实执行SKILL脚本
     录屏会全程录制SKILL运行过程
     """
+    python_exe = sys.executable
     inner_cmd = (
-        f"@echo off && "
-        f"title TRAE 任务界面 && "
-        f"color 0A && "
-        f"echo. && "
-        f"echo ================================================================ && "
-        f"echo   TRAE 任务界面                                                   && "
-        f"echo ================================================================ && "
-        f"echo. && "
-        f"echo   用户输入： {target_command} && "
-        f"echo. && "
-        f"echo   [系统] 确认执行，正在运行...                                     && "
-        f"echo. && "
-        f"set PYTHONPATH={libs_path} && "
-        f'python "{target_script}"'
+        f'@echo off && '
+        f'title TRAE 任务界面 && '
+        f'color 0A && '
+        f'echo. && '
+        f'echo ================================================================ && '
+        f'echo   TRAE 任务界面                                                   && '
+        f'echo ================================================================ && '
+        f'echo. && '
+        f'echo   用户输入： {target_command} && '
+        f'echo. && '
+        f'echo   [系统] 确认执行，正在运行...                                     && '
+        f'echo. && '
+        f'set PYTHONPATH={libs_path} && '
+        f'"{python_exe}" "{target_script}"'
     )
     proc = subprocess.Popen(
         ["cmd", "/k", inner_cmd],
@@ -179,12 +180,19 @@ def show_trae_interface_and_run(target_command, target_script, libs_path):
 
 
 def wait_for_skill_complete(output_dir, timeout=180):
-    """等待SKILL执行完成（监控合并大图生成）"""
+    """等待SKILL执行完成（监控新生成的合并大图）"""
+    # 记录启动前已有的合并大图文件
+    existing = set()
+    if os.path.exists(output_dir):
+        existing = set(f for f in os.listdir(output_dir) if f.startswith("指标通报汇总图_") and f.endswith(".PNG"))
+
     start = time.time()
     while time.time() - start < timeout:
-        merged = find_latest_file(output_dir, "指标通报汇总图_", ".PNG")
-        if merged:
-            return True
+        if os.path.exists(output_dir):
+            current = set(f for f in os.listdir(output_dir) if f.startswith("指标通报汇总图_") and f.endswith(".PNG"))
+            new_files = current - existing
+            if new_files:
+                return True
         time.sleep(2)
     return False
 
@@ -236,9 +244,19 @@ def main():
         print("  ⚠ SKILL执行超时")
     time.sleep(3)
 
-    # ===== 步骤4: 依次展示输出结果（新窗口置顶覆盖）=====
+    # ===== 步骤4: 依次展示输出结果（只展示最新一次的文件）=====
     print("[步骤4] 依次展示输出结果")
     result_steps = []
+
+    # 提取最新时间戳（从合并大图文件名中获取）
+    latest_ts = ""
+    mg = find_latest_file(OUTPUT_DIR, "指标通报汇总图_", ".PNG")
+    if mg:
+        # 文件名格式: 指标通报汇总图_20260813_140626.PNG
+        fname = os.path.basename(mg)
+        parts = fname.rsplit(".", 1)[0].split("_")
+        if len(parts) >= 2:
+            latest_ts = f"_{parts[-2]}_{parts[-1]}"
 
     # 4G输出
     total_4g = find_latest_file(r"C:\zhibiao\4G_output", "4G总表_", ".xlsx")
@@ -256,11 +274,12 @@ def main():
     if r5g:
         result_steps.append(("5G计算结果Excel", r5g))
 
-    # 各小区组看板
+    # 各小区组看板（只展示最新时间戳的）
     boards = sorted([
         f for f in os.listdir(OUTPUT_DIR)
         if f.endswith(".PNG") and "指标通报计算结果" in f
         and "汇总" not in f and "汇总图" not in f
+        and (not latest_ts or latest_ts in f)
     ])
     for b in boards:
         result_steps.append((b, os.path.join(OUTPUT_DIR, b)))
@@ -271,11 +290,10 @@ def main():
         result_steps.append(("汇总看板", sb))
 
     # 合并大图
-    mg = find_latest_file(OUTPUT_DIR, "指标通报汇总图_", ".PNG")
     if mg:
         result_steps.append(("合并大图", mg))
 
-    # 文字通报（前2个）
+    # 文字通报（前2个，按最新排序）
     txts = sorted([f for f in os.listdir(OUTPUT_DIR) if f.endswith(".txt") and "文字通报" in f])
     for t in txts[:2]:
         result_steps.append((t, os.path.join(OUTPUT_DIR, t)))
