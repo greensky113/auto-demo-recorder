@@ -35,12 +35,13 @@ LIBS_PATH = os.path.join(SCRIPT_DIR, "..", "libs")
 OUTPUT_DIR = r"C:\zhibiao\pic_result"
 FPS = 15
 
-# Win32 窗口置顶
+# Win32 窗口置顶 & 最大化
 HWND_TOPMOST = -1
 SWP_NOMOVE = 0x0002
 SWP_NOSIZE = 0x0001
 SWP_SHOWWINDOW = 0x0040
 SW_RESTORE = 9
+SW_MAXIMIZE = 3
 
 HOST = "localhost"
 PORT = 8765
@@ -136,7 +137,8 @@ class ScreenRecorder:
         self.sct.close()
 
 
-def bring_window_to_front(pid=None):
+def bring_window_to_front(pid=None, maximize=False):
+    """将窗口置顶，可选最大化"""
     try:
         user32 = ctypes.windll.user32
 
@@ -146,6 +148,8 @@ def bring_window_to_front(pid=None):
             if pid is None or found_pid.value == pid:
                 if user32.IsWindowVisible(hwnd):
                     user32.ShowWindow(hwnd, SW_RESTORE)
+                    if maximize:
+                        user32.ShowWindow(hwnd, SW_MAXIMIZE)
                     user32.SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0,
                                         SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW)
                     user32.SetForegroundWindow(hwnd)
@@ -157,25 +161,27 @@ def bring_window_to_front(pid=None):
     time.sleep(0.3)
 
 
-def open_file_on_top(filepath):
+def open_file_on_top(filepath, maximize=True):
+    """打开文件并置顶，默认最大化窗口"""
     if not os.path.exists(filepath):
         return False
     try:
         os.startfile(filepath)
-        time.sleep(1.2)
-        bring_window_to_front()
+        time.sleep(1.5)
+        bring_window_to_front(maximize=maximize)
         return True
     except Exception:
         return False
 
 
-def open_folder_on_top(folder_path):
+def open_folder_on_top(folder_path, maximize=True):
+    """打开文件夹并置顶，默认最大化窗口"""
     if not os.path.exists(folder_path):
         return False
     try:
         proc = subprocess.Popen(["explorer", folder_path])
         time.sleep(1.5)
-        bring_window_to_front(proc.pid if proc else None)
+        bring_window_to_front(pid=proc.pid if proc else None, maximize=maximize)
         return True
     except Exception:
         return False
