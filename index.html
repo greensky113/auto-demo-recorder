@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Auto Demo Recorder - 演示录屏控制面板</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --card: #1a1d27;
+    --border: #2a2d3a;
+    --text: #e4e6eb;
+    --muted: #8b8fa3;
+    --primary: #4f8cff;
+    --primary-hover: #3a7bf4;
+    --success: #22c55e;
+    --danger: #ef4444;
+    --warning: #f59e0b;
+    --radius: 10px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 24px;
+  }
+  .container { max-width: 720px; margin: 0 auto; }
+
+  /* Header */
+  .header {
+    text-align: center;
+    margin-bottom: 32px;
+  }
+  .header h1 {
+    font-size: 26px;
+    font-weight: 700;
+    margin-bottom: 6px;
+  }
+  .header p { color: var(--muted); font-size: 14px; }
+
+  /* Card */
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
+    margin-bottom: 20px;
+  }
+  .card-title {
+    font-size: 15px;
+    font-weight: 600;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .card-title .dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--primary);
+  }
+
+  /* Mode tabs */
+  .mode-tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 20px;
+  }
+  .mode-tab {
+    flex: 1;
+    padding: 14px;
+    text-align: center;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-size: 14px;
+  }
+  .mode-tab:hover { border-color: var(--primary); }
+  .mode-tab.active {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: #fff;
+  }
+  .mode-tab .mode-desc {
+    display: block;
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+  .mode-tab.active .mode-desc { color: rgba(255,255,255,0.8); }
+
+  /* Config */
+  .config-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+  .config-row label {
+    width: 120px;
+    font-size: 13px;
+    color: var(--muted);
+    flex-shrink: 0;
+  }
+  .config-row input {
+    flex: 1;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px 12px;
+    color: var(--text);
+    font-size: 13px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .config-row input:focus { border-color: var(--primary); }
+  .config-row input[type="number"] { max-width: 100px; }
+
+  .config-section { display: none; }
+  .config-section.show { display: block; }
+
+  /* Buttons */
+  .btn-group {
+    display: flex;
+    gap: 12px;
+    margin-top: 8px;
+  }
+  .btn {
+    flex: 1;
+    padding: 16px;
+    border: none;
+    border-radius: 8px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-primary {
+    background: var(--primary);
+    color: #fff;
+  }
+  .btn-primary:hover:not(:disabled) { background: var(--primary-hover); }
+  .btn-danger {
+    background: var(--danger);
+    color: #fff;
+  }
+  .btn-success {
+    background: var(--success);
+    color: #fff;
+  }
+  .btn-secondary {
+    background: var(--border);
+    color: var(--text);
+  }
+  .btn-secondary:hover:not(:disabled) { background: #3a3d4a; }
+
+  /* Status */
+  .status-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 16px;
+    border-radius: 8px;
+    margin-bottom: 16px;
+    font-size: 14px;
+  }
+  .status-idle { background: rgba(139,143,163,0.1); color: var(--muted); }
+  .status-running { background: rgba(79,140,255,0.12); color: var(--primary); }
+  .status-completed { background: rgba(34,197,94,0.12); color: var(--success); }
+  .status-error { background: rgba(239,68,68,0.12); color: var(--danger); }
+
+  .status-icon {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .status-idle .status-icon { background: var(--muted); }
+  .status-running .status-icon {
+    background: var(--primary);
+    animation: pulse 1.5s infinite;
+  }
+  .status-completed .status-icon { background: var(--success); }
+  .status-error .status-icon { background: var(--danger); }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  /* Progress */
+  .progress-bar {
+    height: 6px;
+    background: var(--border);
+    border-radius: 3px;
+    overflow: hidden;
+    margin-bottom: 12px;
+  }
+  .progress-fill {
+    height: 100%;
+    background: var(--primary);
+    border-radius: 3px;
+    transition: width 0.3s;
+    width: 0%;
+  }
+
+  .step-info {
+    display: flex;
+    justify-content: space-between;
+    font-size: 13px;
+    color: var(--muted);
+    margin-bottom: 16px;
+  }
+
+  /* Manual next button */
+  .btn-next {
+    display: none;
+    width: 100%;
+    padding: 14px;
+    background: var(--warning);
+    color: #000;
+    border: none;
+    border-radius: 8px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 12px;
+  }
+  .btn-next.show { display: block; }
+  .btn-next:hover { background: #e69009; }
+
+  /* Output */
+  .output-box {
+    display: none;
+    padding: 16px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-top: 12px;
+  }
+  .output-box.show { display: block; }
+  .output-path {
+    font-size: 13px;
+    color: var(--success);
+    word-break: break-all;
+    margin-bottom: 12px;
+    font-family: "Consolas", monospace;
+  }
+  .output-actions {
+    display: flex;
+    gap: 8px;
+  }
+  .output-actions .btn { padding: 10px 16px; font-size: 13px; }
+
+  /* Dependency warning */
+  .dep-warning {
+    display: none;
+    padding: 14px 16px;
+    background: rgba(245,158,11,0.12);
+    border: 1px solid rgba(245,158,11,0.3);
+    border-radius: 8px;
+    color: var(--warning);
+    font-size: 13px;
+    margin-bottom: 20px;
+  }
+  .dep-warning.show { display: block; }
+  .dep-warning code {
+    background: rgba(0,0,0,0.3);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 12px;
+  }
+
+  .hint {
+    text-align: center;
+    color: var(--muted);
+    font-size: 12px;
+    margin-top: 24px;
+    line-height: 1.6;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <!-- Header -->
+  <div class="header">
+    <h1>Auto Demo Recorder</h1>
+    <p>演示录屏控制面板 — 仅在你需要时手动启动</p>
+  </div>
+
+  <!-- 依赖检查警告 -->
+  <div class="dep-warning" id="depWarning">
+    ⚠ 缺少录屏依赖库，请先安装：<br>
+    <code>pip install opencv-python mss numpy</code>
+  </div>
+
+  <!-- 模式选择 -->
+  <div class="card">
+    <div class="card-title"><span class="dot"></span> 录制模式</div>
+    <div class="mode-tabs">
+      <div class="mode-tab active" data-mode="auto" onclick="selectMode('auto')">
+        自动模式
+        <span class="mode-desc">每步自动停留，无人值守</span>
+      </div>
+      <div class="mode-tab" data-mode="manual" onclick="selectMode('manual')">
+        手动模式
+        <span class="mode-desc">按「下一步」切换，可自由操作</span>
+      </div>
+    </div>
+
+    <!-- 自动模式配置 -->
+    <div class="config-section show" id="autoConfig">
+      <div class="config-row">
+        <label>开场停留(秒)</label>
+        <input type="number" id="delay_intro" value="3" min="1" max="30">
+      </div>
+      <div class="config-row">
+        <label>源数据停留(秒)</label>
+        <input type="number" id="delay_source" value="4" min="1" max="30">
+      </div>
+      <div class="config-row">
+        <label>指令展示(秒)</label>
+        <input type="number" id="delay_trae_input" value="3" min="1" max="30">
+      </div>
+      <div class="config-row">
+        <label>每结果停留(秒)</label>
+        <input type="number" id="delay_per_result" value="5" min="1" max="30">
+      </div>
+      <div class="config-row">
+        <label>结束停留(秒)</label>
+        <input type="number" id="delay_end" value="3" min="1" max="30">
+      </div>
+    </div>
+  </div>
+
+  <!-- 高级配置 -->
+  <div class="card">
+    <div class="card-title"><span class="dot"></span> 目标配置</div>
+    <div class="config-row">
+      <label>指令文字</label>
+      <input type="text" id="target_command" value="执行4G5G指标自动通报">
+    </div>
+    <div class="config-row">
+      <label>脚本路径</label>
+      <input type="text" id="target_script" value="">
+    </div>
+    <div class="config-row">
+      <label>输出目录</label>
+      <input type="text" id="output_dir" value="C:\zhibiao\pic_result">
+    </div>
+  </div>
+
+  <!-- 控制按钮 -->
+  <div class="card">
+    <div class="status-bar status-idle" id="statusBar">
+      <div class="status-icon"></div>
+      <span id="statusText">就绪 — 点击下方按钮开始录屏</span>
+    </div>
+
+    <div class="progress-bar" id="progressBar" style="display:none;">
+      <div class="progress-fill" id="progressFill"></div>
+    </div>
+    <div class="step-info" id="stepInfo" style="display:none;">
+      <span id="stepLabel">—</span>
+      <span id="stepCount">0 / 0</span>
+    </div>
+
+    <div class="btn-group">
+      <button class="btn btn-primary" id="btnStart" onclick="startRecording()">开始录屏</button>
+      <button class="btn btn-danger" id="btnStop" onclick="stopRecording()" style="display:none;">停止录屏</button>
+    </div>
+
+    <button class="btn-next" id="btnNext" onclick="nextStep()">下一步 →</button>
+
+    <!-- 输出结果 -->
+    <div class="output-box" id="outputBox">
+      <div class="output-path" id="outputPath"></div>
+      <div class="output-actions">
+        <button class="btn btn-success" onclick="openVideo()">播放视频</button>
+        <button class="btn btn-secondary" onclick="openFolder()">打开输出目录</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="hint">
+    此工具独立运行，不会自动触发<br>
+    仅在你点击「开始录屏」时才会启动录制流程
+  </div>
+</div>
+
+<script>
+let currentMode = "auto";
+let pollTimer = null;
+
+// 初始化默认脚本路径
+document.getElementById("target_script").value =
+  window.location.hostname ? "" : "";
+
+// 模式切换
+function selectMode(mode) {
+  currentMode = mode;
+  document.querySelectorAll(".mode-tab").forEach(t => t.classList.remove("active"));
+  document.querySelector(`[data-mode="${mode}"]`).classList.add("active");
+  document.getElementById("autoConfig").classList.toggle("show", true);
+}
+
+// 开始录制
+async function startRecording() {
+  const config = {
+    mode: currentMode,
+    target_command: document.getElementById("target_command").value,
+    target_script: document.getElementById("target_script").value,
+    output_dir: document.getElementById("output_dir").value,
+    delay_intro: parseInt(document.getElementById("delay_intro").value) || 3,
+    delay_source: parseInt(document.getElementById("delay_source").value) || 4,
+    delay_trae_input: parseInt(document.getElementById("delay_trae_input").value) || 3,
+    delay_per_result: parseInt(document.getElementById("delay_per_result").value) || 5,
+    delay_end: parseInt(document.getElementById("delay_end").value) || 3,
+  };
+
+  try {
+    const res = await fetch("/api/start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(config),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      alert(data.error || "启动失败");
+      return;
+    }
+    // UI 切换到录制中
+    document.getElementById("btnStart").style.display = "none";
+    document.getElementById("btnStop").style.display = "block";
+    document.getElementById("progressBar").style.display = "block";
+    document.getElementById("stepInfo").style.display = "flex";
+    document.getElementById("outputBox").classList.remove("show");
+    startPolling();
+  } catch (e) {
+    alert("请求失败: " + e.message);
+  }
+}
+
+// 停止录制
+async function stopRecording() {
+  await fetch("/api/stop", { method: "POST" });
+  stopPolling();
+  updateUI({ status: "completed", current_step: "已手动停止" });
+}
+
+// 手动模式：下一步
+async function nextStep() {
+  await fetch("/api/next-step", { method: "POST" });
+}
+
+// 轮询状态
+function startPolling() {
+  if (pollTimer) clearInterval(pollTimer);
+  pollTimer = setInterval(pollStatus, 1000);
+  pollStatus();
+}
+
+function stopPolling() {
+  if (pollTimer) {
+    clearInterval(pollTimer);
+    pollTimer = null;
+  }
+}
+
+async function pollStatus() {
+  try {
+    const res = await fetch("/api/status");
+    const data = await res.json();
+    updateUI(data);
+    if (data.status === "completed" || data.status === "error") {
+      stopPolling();
+    }
+  } catch (e) {
+    // 忽略网络错误
+  }
+}
+
+// 更新UI
+function updateUI(data) {
+  const bar = document.getElementById("statusBar");
+  const text = document.getElementById("statusText");
+  const fill = document.getElementById("progressFill");
+  const stepLabel = document.getElementById("stepLabel");
+  const stepCount = document.getElementById("stepCount");
+  const btnNext = document.getElementById("btnNext");
+
+  // 状态栏
+  bar.className = "status-bar status-" + data.status;
+  const statusMap = {
+    idle: "就绪 — 点击下方按钮开始录屏",
+    running: `录制中 — ${data.current_step}`,
+    completed: "录制完成 ✓",
+    error: "录制出错: " + (data.error || ""),
+  };
+  text.textContent = statusMap[data.status] || data.current_step;
+
+  // 进度条
+  if (data.total_steps > 0) {
+    const pct = Math.round((data.step_index / data.total_steps) * 100);
+    fill.style.width = pct + "%";
+  }
+
+  // 步骤信息
+  stepLabel.textContent = data.current_step || "—";
+  stepCount.textContent = `${data.step_index} / ${data.total_steps}`;
+
+  // 手动模式下一步按钮
+  const showNext = data.status === "running" && currentMode === "manual";
+  btnNext.classList.toggle("show", showNext);
+
+  // 按钮切换
+  if (data.status === "running") {
+    document.getElementById("btnStart").style.display = "none";
+    document.getElementById("btnStop").style.display = "block";
+  } else {
+    document.getElementById("btnStart").style.display = "block";
+    document.getElementById("btnStop").style.display = "none";
+    btnNext.classList.remove("show");
+  }
+
+  // 输出结果
+  if (data.status === "completed" && data.output_path) {
+    document.getElementById("outputPath").textContent = "📹 " + data.output_path;
+    document.getElementById("outputBox").classList.add("show");
+  }
+
+  // 耗时
+  if (data.status === "running" && data.elapsed > 0) {
+    const m = Math.floor(data.elapsed / 60);
+    const s = data.elapsed % 60;
+    text.textContent = `录制中 [${m}:${s.toString().padStart(2,"0")}] — ${data.current_step}`;
+  }
+}
+
+// 打开视频
+async function openVideo() {
+  await fetch("/api/open-video", { method: "POST" });
+}
+
+// 打开输出目录
+async function openFolder() {
+  await fetch("/api/open-folder", { method: "POST" });
+}
+
+// 初始检查依赖
+fetch("/api/status").then(r => r.json()).then(data => {
+  if (!data.has_deps) {
+    document.getElementById("depWarning").classList.add("show");
+    document.getElementById("btnStart").disabled = true;
+  }
+});
+</script>
+</body>
+</html>
