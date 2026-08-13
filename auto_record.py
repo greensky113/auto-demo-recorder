@@ -1,9 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-Auto Demo Recorder v3.1 - auto_record.py
-两阶段自动录屏：
-  阶段1: 正常运行目标SKILL（生成所有输出文件）
-  阶段2: SKILL完成后自动启动录屏（模拟TRAE界面 → 展示所有结果 → 保存MP4）
+Auto Demo Recorder v3.2 - auto_record.py
+全程录屏：从桌面开场 → 展示源数据 → 模拟TRAE界面 → 运行SKILL（录制运行过程）→ 展示输出结果 → 保存MP4
 
 触发方式：用户输入 "执行XXX，并完成自动录屏" 时调用此脚本
 """
@@ -30,7 +28,7 @@ LIBS_PATH = os.path.join(SCRIPT_DIR, "..", "libs")
 OUTPUT_DIR = r"C:\zhibiao\pic_result"
 FPS = 15
 
-# 录屏展示阶段每步停留秒数
+# 各步停留秒数
 DELAY_INTRO = 3
 DELAY_SOURCE = 4
 DELAY_TRAE_DISPLAY = 4
@@ -143,44 +141,12 @@ def find_latest_file(directory, prefix, suffix):
     return os.path.join(directory, cands[0])
 
 
-# ========================================================================
-# 阶段1: 运行目标SKILL
-# ========================================================================
-def run_skill(target_script, libs_path):
-    """正常运行目标SKILL脚本，等待完成"""
-    print("\n" + "=" * 60)
-    print("  阶段1: 运行目标SKILL")
-    print("=" * 60)
-
-    env = os.environ.copy()
-    if libs_path and os.path.exists(libs_path):
-        env["PYTHONPATH"] = libs_path
-
-    proc = subprocess.Popen(
-        [sys.executable, target_script],
-        env=env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-    )
-
-    # 实时输出SKILL运行日志
-    for line in proc.stdout:
-        print(f"  {line}", end="")
-
-    proc.wait()
-    exit_code = proc.returncode
-    print(f"\n  SKILL执行完成，退出码: {exit_code}")
-    return exit_code == 0
-
-
-# ========================================================================
-# 阶段2: 自动录屏展示
-# ========================================================================
-def show_trae_interface(target_command):
-    """打开CMD窗口模拟TRAE任务界面，展示用户输入的指令"""
+def show_trae_interface_and_run(target_command, target_script, libs_path):
+    """
+    打开CMD窗口模拟TRAE任务界面：
+    先显示"用户输入指令"，然后真实执行SKILL脚本
+    录屏会全程录制SKILL运行过程
+    """
     inner_cmd = (
         f"@echo off && "
         f"title TRAE 任务界面 && "
@@ -192,13 +158,10 @@ def show_trae_interface(target_command):
         f"echo. && "
         f"echo   用户输入： {target_command} && "
         f"echo. && "
-        f"echo   [系统] 正在执行...                                              && "
+        f"echo   [系统] 确认执行，正在运行...                                     && "
         f"echo. && "
-        f"echo   [系统] 执行完成！已生成所有输出文件。                            && "
-        f"echo. && "
-        f"echo   下面展示输出结果...                                              && "
-        f"echo. && "
-        f"pause"
+        f"set PYTHONPATH={libs_path} && "
+        f'python "{target_script}"'
     )
     proc = subprocess.Popen(
         ["cmd", "/k", inner_cmd],
@@ -209,39 +172,66 @@ def show_trae_interface(target_command):
     return proc
 
 
-def run_recording(target_command, output_dir):
-    """阶段2: 启动录屏，模拟TRAE界面，展示所有输出结果"""
-    print("\n" + "=" * 60)
-    print("  阶段2: 自动录屏展示")
+def wait_for_skill_complete(output_dir, timeout=180):
+    """等待SKILL执行完成（监控合并大图生成）"""
+    start = time.time()
+    while time.time() - start < timeout:
+        merged = find_latest_file(output_dir, "指标通报汇总图_", ".PNG")
+        if merged:
+            return True
+        time.sleep(2)
+    return False
+
+
+# ========================================================================
+# 主流程：全程录屏
+# ========================================================================
+def main():
     print("=" * 60)
+    print("  Auto Demo Recorder v3.2")
+    print("  全程录屏模式：SKILL运行过程也会被录制")
+    print("=" * 60)
+    print(f"  目标指令: {TARGET_COMMAND}")
+    print(f"  目标脚本: {TARGET_SCRIPT}")
 
     video_path = os.path.join(
-        output_dir, f"演示视频_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4"
+        OUTPUT_DIR, f"演示视频_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4"
     )
-    print(f"  视频输出: {video_path}")
+    print(f"  视频输出: {video_path}\n")
 
     # 初始化录制器
     recorder = ScreenRecorder(video_path, fps=FPS)
 
-    # 开始录制
-    print("\n  [步骤1] 开始录制 - 桌面开场")
+    # ===== 步骤1: 开始录制 - 桌面开场 =====
+    print("[步骤1] 开始录制 - 桌面开场")
     recorder.start()
     time.sleep(DELAY_INTRO)
 
-    # 展示源数据目录
-    print("  [步骤2] 展示源数据目录")
+    # ===== 步骤2: 展示源数据目录 =====
+    print("[步骤2] 展示源数据目录")
     open_folder_on_top(r"C:\zhibiao\4G_source")
     time.sleep(DELAY_SOURCE)
     open_folder_on_top(r"C:\zhibiao\5G_source")
     time.sleep(DELAY_SOURCE)
 
-    # 模拟TRAE任务界面
-    print(f"  [步骤3] 展示TRAE任务界面: {target_command}")
-    trae_proc = show_trae_interface(target_command)
+    # ===== 步骤3: 模拟TRAE界面 + 运行SKILL（全程录制）=====
+    print(f"[步骤3] TRAE界面输入指令: {TARGET_COMMAND}")
+    print("  → 打开TRAE任务界面，显示用户输入指令")
+    print("  → 开始运行SKILL脚本（录屏中...）")
+    skill_proc = show_trae_interface_and_run(TARGET_COMMAND, TARGET_SCRIPT, LIBS_PATH)
     time.sleep(DELAY_TRAE_DISPLAY)
 
-    # 展示所有输出结果（新窗口置顶覆盖）
-    print("  [步骤4] 依次展示输出结果")
+    # 等待SKILL执行完成（录屏持续录制运行过程）
+    print("  → 等待SKILL执行完成（全程录制中）...")
+    success = wait_for_skill_complete(OUTPUT_DIR, timeout=180)
+    if success:
+        print("  ✓ SKILL执行完成")
+    else:
+        print("  ⚠ SKILL执行超时")
+    time.sleep(3)
+
+    # ===== 步骤4: 依次展示输出结果（新窗口置顶覆盖）=====
+    print("[步骤4] 依次展示输出结果")
     result_steps = []
 
     # 4G输出
@@ -262,75 +252,48 @@ def run_recording(target_command, output_dir):
 
     # 各小区组看板
     boards = sorted([
-        f for f in os.listdir(output_dir)
+        f for f in os.listdir(OUTPUT_DIR)
         if f.endswith(".PNG") and "指标通报计算结果" in f
         and "汇总" not in f and "汇总图" not in f
     ])
     for b in boards:
-        result_steps.append((b, os.path.join(output_dir, b)))
+        result_steps.append((b, os.path.join(OUTPUT_DIR, b)))
 
     # 汇总看板
-    sb = find_latest_file(output_dir, "汇总指标通报计算结果_", ".PNG")
+    sb = find_latest_file(OUTPUT_DIR, "汇总指标通报计算结果_", ".PNG")
     if sb:
         result_steps.append(("汇总看板", sb))
 
     # 合并大图
-    mg = find_latest_file(output_dir, "指标通报汇总图_", ".PNG")
+    mg = find_latest_file(OUTPUT_DIR, "指标通报汇总图_", ".PNG")
     if mg:
         result_steps.append(("合并大图", mg))
 
     # 文字通报（前2个）
-    txts = sorted([f for f in os.listdir(output_dir) if f.endswith(".txt") and "文字通报" in f])
+    txts = sorted([f for f in os.listdir(OUTPUT_DIR) if f.endswith(".txt") and "文字通报" in f])
     for t in txts[:2]:
-        result_steps.append((t, os.path.join(output_dir, t)))
+        result_steps.append((t, os.path.join(OUTPUT_DIR, t)))
 
     # 逐一打开并置顶
     for idx, (label, filepath) in enumerate(result_steps, 1):
-        print(f"    [4.{idx}] {label}")
+        print(f"  [4.{idx}] {label}")
         open_file_on_top(filepath)
         time.sleep(DELAY_PER_RESULT)
 
-    # 结束录制
-    print("  [步骤5] 结束录制")
+    # ===== 步骤5: 结束录制 =====
+    print("[步骤5] 结束录制")
     time.sleep(DELAY_END)
     recorder.stop()
 
     print("\n" + "=" * 60)
-    print(f"  ✓ 录屏完成！")
+    print(f"✓ 全程录屏完成！")
     print(f"  视频: {video_path}")
     print(f"  参数: {recorder.width}x{recorder.height} @ {FPS}fps")
     print("=" * 60)
-    return video_path
 
-
-# ========================================================================
-# 主入口
-# ========================================================================
-def main():
-    """两阶段执行：先运行SKILL，再自动录屏"""
-    print("=" * 60)
-    print("  Auto Demo Recorder v3.1")
-    print("  模式: 先执行SKILL → 再自动录屏")
-    print("=" * 60)
-    print(f"  目标指令: {TARGET_COMMAND}")
-    print(f"  目标脚本: {TARGET_SCRIPT}")
-
-    # 阶段1: 运行SKILL
-    success = run_skill(TARGET_SCRIPT, LIBS_PATH)
-    if not success:
-        print("\n  ⚠ SKILL执行失败，跳过录屏")
-        return
-
-    # 短暂停顿
-    print("\n  等待3秒后开始录屏...")
-    time.sleep(3)
-
-    # 阶段2: 自动录屏
-    video_path = run_recording(TARGET_COMMAND, OUTPUT_DIR)
-
-    # 自动打开视频
-    if video_path and os.path.exists(video_path):
-        print(f"\n  自动播放视频: {video_path}")
+    # 自动播放视频
+    if os.path.exists(video_path):
+        print(f"\n自动播放视频...")
         os.startfile(video_path)
 
 
